@@ -1,0 +1,19 @@
+{
+  "name": "@tradle/otr-client",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test"
+  },
+  "author": "Mark Vayngrib <mark@tradle.io> (http://github.com/mvayngrib)",
+  "license": "ISC",
+  "dependencies": {
+    "@tradle/otr": "^0.2.17",
+    "debug": "^2.2.0",
+    "typeforce": "^1.6.2"
+  },
+  "devDependencies": {
+    "tape": "^4.5.0"
+  }
+}
