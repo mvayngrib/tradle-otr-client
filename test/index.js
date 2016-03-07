@@ -16,7 +16,7 @@ test('basic', function (t) {
       if (i !== j) {
         me.send = function (msg, cb) {
           process.nextTick(function () {
-            them.emit('message', msg)
+            them.emit('receive', msg)
             cb()
           })
         }
@@ -47,11 +47,11 @@ test('basic', function (t) {
     t.pass('delivered')
   })
 
-  o1.on('message', function (msg) {
+  o1.on('receive', function (msg) {
     t.equal(msg, 'ho')
   })
 
-  o2.on('message', function (msg) {
+  o2.on('receive', function (msg) {
     t.equal(msg, 'hey')
   })
 })

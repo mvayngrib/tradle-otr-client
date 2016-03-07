@@ -84,7 +84,7 @@ Client.prototype._setupOTR = function () {
   })
 
   otr.on('ui', function (msg, meta) {
-    self.emit('message', msg)
+    self.emit('receive', msg)
   })
 
   otr.on('status', function (status) {
@@ -107,7 +107,7 @@ Client.prototype._setupOTR = function () {
     self._reinit
   })
 
-  this._client.on('message', function (msg) {
+  this._client.on('receive', function (msg) {
     otr.receiveMsg(msg)
   })
 }
