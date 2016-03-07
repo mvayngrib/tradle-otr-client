@@ -3,6 +3,7 @@ var util = require('util')
 var EventEmitter = require('events').EventEmitter
 var typeforce = require('typeforce')
 var debug = require('debug')('otr-client')
+var connect = require('sendy').connect
 var OTR = require('@tradle/otr').OTR
 var MSG_ENCODING = 'base64'
 var UINT16 = 0xffff
@@ -13,13 +14,15 @@ function Client (opts) {
   typeforce({
     client: 'Object',
     key: 'DSA',
+    theirFingerprint: 'String',
     instanceTag: '?String',
-    theirFingerprint: '?String'
   }, opts)
 
   EventEmitter.call(this)
 
   this._client = opts.client
+  connect(this, this._client)
+
   this._key = opts.key
   this._fingerprint = opts.key.fingerprint()
   this._theirFingerprint = opts.theirFingerprint
@@ -40,6 +43,7 @@ Client.prototype._debug = function () {
 
 Client.prototype._setupOTR = function () {
   var self = this
+
   if (this._otr) {
     return this._otr.endOtr(function () {
       self._otr.removeAllListeners()

@@ -10,19 +10,29 @@ test('basic', function (t) {
   t.plan(4)
 
   var c1 = new EventEmitter()
+  c1.send = basicSend
+  c1.receive = basicReceive
+
   var c2 = new EventEmitter()
-  ;[c1, c2].forEach(function (me, i) {
-    ;[c1, c2].forEach(function (them, j) {
-      if (i !== j) {
-        me.send = function (msg, cb) {
-          process.nextTick(function () {
-            them.emit('receive', msg)
-            cb()
-          })
-        }
-      }
-    })
-  })
+  c2.send = basicSend
+  c2.receive = basicReceive
+
+  // ;[c1, c2].forEach(function (me, i) {
+  //   ;[c1, c2].forEach(function (them, j) {
+  //     if (i !== j) {
+  //       me.on('send', function (msg) {
+  //         them.receive(msg)
+  //       })
+  //       // me.send = function (msg, cb) {
+  //       //   process.nextTick(function () {
+  //       //     me.emit('send', msg)
+  //       //     // them.emit('receive', msg)
+  //       //     cb()
+  //       //   })
+  //       // }
+  //     }
+  //   })
+  // })
 
   var key1 = DSA.parsePrivate(keys.shift())
   var key2 = DSA.parsePrivate(keys.shift())
@@ -37,6 +47,18 @@ test('basic', function (t) {
     client: c2,
     key: key2,
     theirFingerprint: key1.fingerprint()
+  })
+
+  o1.on('send', function (msg) {
+    process.nextTick(function () {
+      o2.receive(msg)
+    })
+  })
+
+  o2.on('send', function (msg) {
+    process.nextTick(function () {
+      o1.receive(msg)
+    })
   })
 
   o1.send('hey', function () {
@@ -55,3 +77,12 @@ test('basic', function (t) {
     t.equal(msg, 'hey')
   })
 })
+
+function basicReceive (msg) {
+  this.emit('receive', msg)
+}
+
+function basicSend (msg, cb) {
+  this.emit('send', msg)
+  process.nextTick(cb)
+}
