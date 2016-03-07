@@ -7,6 +7,7 @@ var connect = require('sendy').connect
 var OTR = require('@tradle/otr').OTR
 var MSG_ENCODING = 'base64'
 var UINT16 = 0xffff
+var noop = function () {}
 
 function Client (opts) {
   var self = this
@@ -88,7 +89,7 @@ Client.prototype._setupOTR = function () {
   })
 
   otr.on('ui', function (msg, meta) {
-    self.emit('receive', msg)
+    self.emit('receive', new Buffer(msg, MSG_ENCODING))
   })
 
   otr.on('status', function (status) {
@@ -108,16 +109,21 @@ Client.prototype._setupOTR = function () {
 
   otr.on('error', function (err) {
     self._debug('OTR error: ' + err)
-    self._reinit
+    self._reinit()
   })
 
   this._client.on('receive', function (msg) {
-    otr.receiveMsg(msg)
+    otr.receiveMsg(msg.toString())
   })
 }
 
 Client.prototype.send = function (msg, ondelivered) {
   var self = this
+
+  if (typeof msg === 'string') {
+    // assume utf8
+    msg = new Buffer(msg)
+  }
 
   if (Buffer.isBuffer(msg)) {
     msg = msg.toString(MSG_ENCODING)
@@ -128,4 +134,12 @@ Client.prototype.send = function (msg, ondelivered) {
     // has just been emitted
     self._deliveryCallbacks[self._deliveryCallbacks.length - 1].callback = ondelivered
   })
+}
+
+Client.prototype.destroy = function (cb) {
+  if (this._destroyed) return
+
+  cb = cb || noop
+  this._destroyed = true
+  if (this._otr) this._otr.endOtr(cb)
 }

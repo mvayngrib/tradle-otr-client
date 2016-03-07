@@ -17,23 +17,6 @@ test('basic', function (t) {
   c2.send = basicSend
   c2.receive = basicReceive
 
-  // ;[c1, c2].forEach(function (me, i) {
-  //   ;[c1, c2].forEach(function (them, j) {
-  //     if (i !== j) {
-  //       me.on('send', function (msg) {
-  //         them.receive(msg)
-  //       })
-  //       // me.send = function (msg, cb) {
-  //       //   process.nextTick(function () {
-  //       //     me.emit('send', msg)
-  //       //     // them.emit('receive', msg)
-  //       //     cb()
-  //       //   })
-  //       // }
-  //     }
-  //   })
-  // })
-
   var key1 = DSA.parsePrivate(keys.shift())
   var key2 = DSA.parsePrivate(keys.shift())
 
@@ -70,11 +53,11 @@ test('basic', function (t) {
   })
 
   o1.on('receive', function (msg) {
-    t.equal(msg, 'ho')
+    t.equal(msg.toString(), 'ho')
   })
 
   o2.on('receive', function (msg) {
-    t.equal(msg, 'hey')
+    t.equal(msg.toString(), 'hey')
   })
 })
 
