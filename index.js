@@ -94,6 +94,7 @@ Client.prototype._setupOTR = function () {
 
   otr.on('status', function (status) {
     self._debug('otr status', status)
+    if (status === OTR.CONST.STATUS_END_OTR) return otr = null
     if (status !== OTR.CONST.STATUS_AKE_SUCCESS) return
 
     var theirActualFingerprint = otr.their_priv_pk.fingerprint()
@@ -113,7 +114,9 @@ Client.prototype._setupOTR = function () {
   })
 
   this._client.on('receive', function (msg) {
-    otr.receiveMsg(msg.toString())
+    if (otr) {
+      otr.receiveMsg(msg.toString())
+    }
   })
 }
 
