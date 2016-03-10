@@ -49,7 +49,7 @@ Client.prototype._setupOTR = function () {
     return this._otr.endOtr(function () {
       self._otr.removeAllListeners()
       self._otr = null
-      self._reinit()
+      self._setupOTR()
     })
   }
 
@@ -109,7 +109,7 @@ Client.prototype._setupOTR = function () {
 
   otr.on('error', function (err) {
     self._debug('OTR error: ' + err)
-    self._reinit()
+    self._setupOTR()
   })
 
   this._client.on('receive', function (msg) {
