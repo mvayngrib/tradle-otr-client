@@ -28,9 +28,15 @@ function Client (opts) {
   this._fingerprint = opts.key.fingerprint()
   this._theirFingerprint = opts.theirFingerprint
   this._instanceTag = opts.instanceTag
-  this._deliveryCallbacks = []
-  this._queued = 0
-  this._setupOTR()
+  this._reset()
+
+  this._client.on('receive', function (msg) {
+    if (self._resetting) return
+
+    if (self._otr) {
+      self._otr.receiveMsg(msg.toString())
+    }
+  })
 }
 
 util.inherits(Client, EventEmitter)
@@ -42,15 +48,34 @@ Client.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
+Client.prototype._reset = function () {
+  var self = this
+  var queue = this._queue && this._queue.slice()
+  this._deliveryCallbacks = []
+  this._queue = []
+  this._queuedChunks = 0
+  this._resetting = true
+  this._setupOTR()
+  if (queue) {
+    queue.forEach(function (args) {
+      self.send.apply(self, args)
+    })
+  }
+}
+
 Client.prototype._setupOTR = function () {
   var self = this
 
   if (this._otr) {
     return this._otr.endOtr(function () {
+      self._resetting = false
       self._otr.removeAllListeners()
       self._otr = null
       self._setupOTR()
+      self._otr.sendQueryMsg()
     })
+  } else {
+    this._resetting = false
   }
 
   var otr = this._otr = new OTR({
@@ -67,14 +92,17 @@ Client.prototype._setupOTR = function () {
 
   otr.REQUIRE_ENCRYPTION = true
   otr.on('io', function (msg, meta) {
+    if (self._resetting) return
+
     // self._debug('sending', msg)
     self._deliveryCallbacks.push({
-      count: ++self._queued,
+      count: ++self._queuedChunks,
       callback: null
     })
 
+    msg = new Buffer(msg) // OTR uses UTF
     self._client.send(msg, function () {
-      self._queued--
+      self._queuedChunks--
       self._deliveryCallbacks = self._deliveryCallbacks.filter(function (item) {
         if (--item.count === 0) {
           var cb = item.callback
@@ -88,11 +116,19 @@ Client.prototype._setupOTR = function () {
     })
   })
 
-  otr.on('ui', function (msg, meta) {
+  otr.on('ui', function (msg, encrypted) {
+    if (self._resetting) return
+
+    if (!encrypted) {
+      return self._setupOTR()
+    }
+
     self.emit('receive', new Buffer(msg, MSG_ENCODING))
   })
 
   otr.on('status', function (status) {
+    if (self._resetting) return
+
     self._debug('otr status', status)
     if (status === OTR.CONST.STATUS_END_OTR) return otr = null
     if (status !== OTR.CONST.STATUS_AKE_SUCCESS) return
@@ -109,15 +145,13 @@ Client.prototype._setupOTR = function () {
   })
 
   otr.on('error', function (err) {
+    if (self._resetting) return
+
     self._debug('OTR error: ' + err)
     self._setupOTR()
   })
 
-  this._client.on('receive', function (msg) {
-    if (otr) {
-      otr.receiveMsg(msg.toString())
-    }
-  })
+  this._processQueue()
 }
 
 Client.prototype.send = function (msg, ondelivered) {
@@ -132,17 +166,37 @@ Client.prototype.send = function (msg, ondelivered) {
     msg = msg.toString(MSG_ENCODING)
   }
 
+  this._queue.push(arguments)
+  this._processQueue()
+}
+
+Client.prototype._processQueue = function () {
+  var self = this
+  if (!this._otr || !this._queue.length) return
+
+  var next = this._queue[0]
+  var msg = next[0]
+  var ondelivered = next[1] || noop
   this._otr.sendMsg(msg, function () {
     // last 'io' event for this message
     // has just been emitted
-    self._deliveryCallbacks[self._deliveryCallbacks.length - 1].callback = ondelivered
+    self._deliveryCallbacks[self._deliveryCallbacks.length - 1].callback = function () {
+      self._queue.shift()
+      ondelivered()
+    }
   })
 }
 
 Client.prototype.destroy = function (cb) {
+  var self = this
   if (this._destroyed) return
 
   cb = cb || noop
   this._destroyed = true
-  if (this._otr) this._otr.endOtr(cb)
+  if (this._otr) {
+    this._resetting = true
+    this._otr.endOtr(function () {
+      self._otr.removeAllListeners()
+    })
+  }
 }
