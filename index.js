@@ -52,6 +52,8 @@ Client.prototype._debug = function () {
 
 Client.prototype.reset = function () {
   var self = this
+  if (this._destroyed) return
+
   var queue = this._queue && this._queue.slice()
   this._deliveryCallbacks = []
   this._queue = []
