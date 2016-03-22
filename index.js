@@ -63,6 +63,7 @@ Client.prototype.reset = function () {
   if (this._client.reset) this._client.reset()
 
   if (queue) {
+    this._debug('resetting')
     queue.forEach(function (args) {
       self.send.apply(self, args)
     })
@@ -184,6 +185,7 @@ Client.prototype.send = function (msg, ondelivered) {
   if (this._destroyed) throw new Error('destroyed')
 
   this._debug('queueing msg')
+  this._queue.push(arguments)
   if (typeof msg === 'string') {
     // assume utf8
     msg = new Buffer(msg)
@@ -193,7 +195,6 @@ Client.prototype.send = function (msg, ondelivered) {
     msg = msg.toString(MSG_ENCODING)
   }
 
-  this._queue.push(arguments)
   this._processQueue()
 }
 

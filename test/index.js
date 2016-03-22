@@ -14,7 +14,7 @@ test('basic', function (t) {
   var bools = []
   var receive = Connection.prototype.receive
   Connection.prototype.receive = function () {
-    var bool = Math.random() < 0.5
+    var bool = Math.round(Math.random())
     bools.push(bool)
     if (bool) return receive.apply(this, arguments)
   }
@@ -54,30 +54,42 @@ test('basic', function (t) {
     })
   })
 
-  o1.send('hey', function () {
+  var hey = 'hey'.repeat(50000)
+  var ho = 'ho'.repeat(10000)
+  o1.send(hey, function () {
     t.pass('delivered')
     finish()
   })
 
-  o2.send('ho', function () {
+  o2.send(ho, function () {
     t.pass('delivered')
     finish()
   })
 
   o1.on('receive', function (msg) {
-    t.equal(msg.toString(), 'ho')
+    t.equal(msg.toString(), ho)
     finish()
   })
 
   o2.on('receive', function (msg) {
-    t.equal(msg.toString(), 'hey')
+    t.equal(msg.toString(), hey)
     finish()
   })
+
+  // setInterval(function () {
+  //   var client = Math.random() > 0.5 ? o1 : o2
+  //   client._client._client.reset()
+  // }, 5000).unref()
+
+  // var failTimeout = setTimeout(function () {
+  //   console.log('[' + bools.join(',') + ']')
+  // }, 20000)
 
   var togo = 4
   function finish () {
     if (--togo) return
 
+    clearTimeout(failTimeout)
     Connection.prototype.receive = receive
     o1.destroy()
     o2.destroy()
