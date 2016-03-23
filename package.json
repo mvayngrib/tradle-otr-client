@@ -1,6 +1,6 @@
 {
   "name": "sendy-otr",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "[sendy](http://github.com/tradle/sendy)",
   "main": "index.js",
   "scripts": {
