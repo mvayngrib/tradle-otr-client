@@ -77,9 +77,10 @@ test('basic', function (t) {
   })
 
   // setInterval(function () {
+  //   console.log('random murder')
   //   var client = Math.random() > 0.5 ? o1 : o2
   //   client._client._client.reset()
-  // }, 5000).unref()
+  // }, 2000).unref()
 
   // var failTimeout = setTimeout(function () {
   //   console.log('[' + bools.join(',') + ']')
@@ -89,7 +90,7 @@ test('basic', function (t) {
   function finish () {
     if (--togo) return
 
-    clearTimeout(failTimeout)
+    // clearTimeout(failTimeout)
     Connection.prototype.receive = receive
     o1.destroy()
     o2.destroy()
