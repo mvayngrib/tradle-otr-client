@@ -50,22 +50,22 @@ Client.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
-Client.prototype.reset = function () {
+Client.prototype.reset = function (abortPending) {
   var self = this
   if (this._destroyed) return
 
-  var queue = this._queue && this._queue.slice()
+  var cbs = this._deliveryCallbacks && this._deliveryCallbacks.slice()
+  this._debug('resetting')
   this._deliveryCallbacks = []
   this._queue = []
   this._queuedChunks = 0
   this._resetting = true
   this._setupOTR()
   if (this._client.reset) this._client.reset()
-
-  if (queue) {
-    this._debug('resetting')
-    queue.forEach(function (args) {
-      self.send.apply(self, args)
+  if (abortPending && cbs) {
+    var err = new Error('aborted')
+    cbs.forEach(function (fn) {
+      fn(err)
     })
   }
 }
@@ -135,7 +135,7 @@ Client.prototype._setupOTR = function () {
 
     if (!encrypted) {
       self._debug('received unexpected plaintext...resetting OTR instance')
-      return self.reset()
+      return self._resetAndResend()
     }
 
     self._debug('decrypted OTR message')
@@ -174,7 +174,7 @@ Client.prototype._setupOTR = function () {
     if (self._resetting) return
 
     self._debug('resetting due to OTR error: ' + err)
-    self.reset()
+    self._resetAndResend()
   })
 
   this._processQueue()
@@ -196,6 +196,14 @@ Client.prototype.send = function (msg, ondelivered) {
   }
 
   this._processQueue()
+}
+
+Client.prototype._resetAndResend = function () {
+  var queue = this._queue.slice()
+  this.reset()
+  queue.forEach(function (args) {
+    this.send.apply(this, args)
+  }, this)
 }
 
 Client.prototype._processQueue = function () {
