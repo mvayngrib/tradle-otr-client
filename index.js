@@ -28,10 +28,14 @@ function Client (opts) {
   this._fingerprint = opts.key.fingerprint()
   this._theirFingerprint = opts.theirFingerprint
   this._instanceTag = opts.instanceTag
-  this.reset()
+  // this.reset()
+  this._deliveryCallbacks = []
+  this._queue = []
+  this._queuedChunks = 0
+  this._setupOTR()
 
   this._client.on('receive', function (msg) {
-    if (self._resetting) return
+    // if (self._resetting) return
 
     if (self._otr) {
       self._debug('received OTR')
@@ -50,46 +54,46 @@ Client.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
-Client.prototype.reset = function (abortPending) {
-  var self = this
-  if (this._destroyed) return
+// Client.prototype.reset = function (abortPending) {
+//   var self = this
+//   if (this._destroyed) return
 
-  var cbs = this._deliveryCallbacks && this._deliveryCallbacks.slice()
-  this._debug('resetting')
-  this._deliveryCallbacks = []
-  this._queue = []
-  this._queuedChunks = 0
-  this._resetting = true
-  this._setupOTR()
-  if (this._client.reset) this._client.reset()
-  if (abortPending && cbs) {
-    var err = new Error('aborted')
-    cbs.forEach(function (fn) {
-      fn(err)
-    })
-  }
-}
+//   // var cbs = this._deliveryCallbacks && this._deliveryCallbacks.slice()
+//   this._debug('resetting')
+//   this._deliveryCallbacks = []
+//   this._queue = []
+//   this._queuedChunks = 0
+//   this._resetting = true
+//   this._setupOTR()
+//   if (this._client.reset) this._client.reset(err)
+//   // if (abortPending && cbs) {
+//   //   var err = new Error('aborted')
+//   //   cbs.forEach(function (fn) {
+//   //     fn(err)
+//   //   })
+//   // }
+// }
 
 Client.prototype._setupOTR = function () {
   var self = this
 
-  if (this._otr) {
-    var endTimeout = setTimeout(function () {
-      self._resetting = false
-    }, 1000)
+  // if (this._otr) {
+  //   var endTimeout = setTimeout(function () {
+  //     self._resetting = false
+  //   }, 1000)
 
-    return this._otr.endOtr(function () {
-      clearTimeout(endTimeout)
-      self._resetting = false
-      self._otr.removeAllListeners()
-      self._otr = otr = null
-      self._setupOTR()
-      // attempt to re-establish session
-      self._otr.sendQueryMsg()
-    })
-  } else {
-    this._resetting = false
-  }
+  //   return this._otr.endOtr(function () {
+  //     clearTimeout(endTimeout)
+  //     self._resetting = false
+  //     self._otr.removeAllListeners()
+  //     self._otr = otr = null
+  //     self._setupOTR()
+  //     // attempt to re-establish session
+  //     self._otr.sendQueryMsg()
+  //   })
+  // } else {
+  //   this._resetting = false
+  // }
 
   var otr = this._otr = new OTR({
     priv: this._key,
@@ -105,7 +109,7 @@ Client.prototype._setupOTR = function () {
 
   otr.REQUIRE_ENCRYPTION = true
   otr.on('io', function (msg, meta) {
-    if (self._resetting) return
+    if (self._destroyed) return
 
     // self._debug('sending', msg)
     self._deliveryCallbacks.push({
@@ -115,27 +119,54 @@ Client.prototype._setupOTR = function () {
 
     msg = new Buffer(msg) // OTR uses UTF
     self._debug('sending OTR')
-    self._client.send(msg, function () {
+    self._client.send(msg, function (err) {
+      // more expensive, but simpler
+      if (err) return self.destroy()
+
+      // if (err) {
+      //   // cancel all queued
+      //   self._cancelingPending = true
+      //   process.nextTick(function () {
+      //     self._cancelingPending = false
+      //   })
+
+      //   self._queue.length = 0
+      //   var queued = self._deliveryCallbacks.slice()
+      //   self._deliveryCallbacks.length = 0
+      //   self._queuedChunks = 0
+      //   queued.forEach(function (item) {
+      //     if (item.callback) item.callback(err)
+      //   })
+
+      //   return
+      // }
+
       self._queuedChunks--
+      self._deliveryCallbacks.forEach(function (item) {
+        item.count--
+      })
+
+      var callNow = self._deliveryCallbacks.filter(function (item) {
+        return item.count === 0
+      })
+
       self._deliveryCallbacks = self._deliveryCallbacks.filter(function (item) {
-        if (--item.count === 0) {
-          var cb = item.callback
-          if (cb) cb()
+        return item.count !== 0
+      })
 
-          return
-        }
-
-        return true
+      callNow.forEach(function (item) {
+        if (item.callback) item.callback()
       })
     })
   })
 
   otr.on('ui', function (msg, encrypted) {
-    if (self._resetting) return
+    if (self._destroyed) return
 
     if (!encrypted) {
-      self._debug('received unexpected plaintext...resetting OTR instance')
-      return self._resetAndResend()
+      self._debug('received unexpected plaintext...self-destructing')
+      // return self._resetAndResend()
+      return self.destroy()
     }
 
     self._debug('decrypted OTR message')
@@ -144,7 +175,7 @@ Client.prototype._setupOTR = function () {
 
   // var aked
   otr.on('status', function (status) {
-    if (self._resetting || !otr) return
+    if (self._destroyed || !otr) return
 
     self._debug('otr status', status)
     if (status !== OTR.CONST.STATUS_AKE_SUCCESS) {
@@ -171,11 +202,15 @@ Client.prototype._setupOTR = function () {
   })
 
   otr.on('error', function (err) {
-    if (self._resetting) return
+    if (self._destroyed) return
 
-    self._debug('resetting due to OTR error: ' + err)
-    self._resetAndResend()
+    self.destroy()
+
+    // self._debug('resetting due to OTR error: ' + err)
+    // self._resetAndResend()
   })
+
+  otr.sendQueryMsg()
 
   this._processQueue()
 }
@@ -183,6 +218,12 @@ Client.prototype._setupOTR = function () {
 Client.prototype.send = function (msg, ondelivered) {
   var self = this
   if (this._destroyed) throw new Error('destroyed')
+
+  if (this._cancelingPending) {
+    return process.nextTick(function () {
+      self.send(msg, ondelivered)
+    })
+  }
 
   this._debug('queueing msg')
   this._queue.push(arguments)
@@ -198,49 +239,48 @@ Client.prototype.send = function (msg, ondelivered) {
   this._processQueue()
 }
 
-Client.prototype._resetAndResend = function () {
-  var queue = this._queue.slice()
-  this.reset()
-  queue.forEach(function (args) {
-    this.send.apply(this, args)
-  }, this)
-}
+// Client.prototype._resetAndResend = function () {
+//   var queue = this._queue.slice()
+//   this.reset()
+//   queue.forEach(function (args) {
+//     this.send.apply(this, args)
+//   }, this)
+// }
 
 Client.prototype._processQueue = function () {
   var self = this
-  if (!this._otr || !this._queue.length) return
+  if (this._destroyed || !this._queue.length) return
 
   var next = this._queue[0]
   var msg = next[0]
   var ondelivered = next[1] || noop
   this._otr.sendMsg(msg, function () {
+    if (self._destroyed) return
+
     // last 'io' event for this message
     // has just been emitted
     //
     // NOTE: this doesn't work if a session needs to be re-established
     // for some reason during the process of getting this message through
     // so it's better to not rely on this and number messages instead
-    self._deliveryCallbacks[self._deliveryCallbacks.length - 1].callback = function () {
+    self._deliveryCallbacks[self._deliveryCallbacks.length - 1].callback = function (err) {
       self._debug('delivered msg')
       self._queue.shift()
-      ondelivered()
+      ondelivered(err)
     }
   })
 }
 
-Client.prototype.destroy = function (cb) {
+Client.prototype.destroy = function () {
   var self = this
   if (this._destroyed) return
 
   this._debug('destroying')
-  cb = cb || noop
   this._destroyed = true
-  if (this._otr) {
-    this._resetting = true
-    this._otr.endOtr(function () {
-      self._otr.removeAllListeners()
-    })
-  }
+  this._otr.endOtr(function () {
+    self._otr.removeAllListeners()
+  })
 
   this._client.destroy()
+  this.emit('destroy')
 }

@@ -3,9 +3,10 @@ var util = require('util')
 var EventEmitter = require('events').EventEmitter
 var test = require('tape')
 var DSA = require('@tradle/otr').DSA
-var keys = require('./fixtures/keys')
 var Sendy = require('sendy')
 var Connection = Sendy.Connection
+var Switchboard = Sendy.Switchboard
+var keys = require('./fixtures/keys')
 var OTRClient = require('../')
 
 test('basic', function (t) {
@@ -27,8 +28,8 @@ test('basic', function (t) {
   // c2.send = basicSend
   // c2.receive = basicReceive
 
-  var key1 = DSA.parsePrivate(keys.shift())
-  var key2 = DSA.parsePrivate(keys.shift())
+  var key1 = DSA.parsePrivate(keys[0])
+  var key2 = DSA.parsePrivate(keys[1])
 
   var o1 = new OTRClient({
     client: new Sendy(),
@@ -96,6 +97,186 @@ test('basic', function (t) {
     o2.destroy()
     t.end()
   }
+})
+
+test.only('switchboard disconnect', function (t) {
+  // t.timeoutAfter(5000)
+  var names = ['a', 'b', 'c']
+  var blocked = {}
+  // var waitForTimeout
+  // var waitedForTimeout
+  // var cliffJumper = 'a'
+  var disconnected
+  var reconnected
+  var unreliables = names.map(function (name, i) {
+    // these are 100% reliable, but that's not what we're testing here
+    var ee = new EventEmitter()
+    ee.on('connect', function () {
+      if (disconnected) {
+        disconnected = false
+        reconnected = true
+      }
+    })
+
+    ee.on('disconnect', function () {
+      disconnected = true
+    })
+
+    ee.name = name
+    ee.destroy = function () {}
+    ee.send = function (msg) {
+      if (blocked[name]) return
+
+      var to = unreliables.filter(function (u) {
+        return u.name === msg.to
+      })[0]
+
+      process.nextTick(function () {
+        // if (!waitForTimeout) {
+        if (!disconnected) {
+          to.emit('receive', msg)
+        }
+        // } else {
+        //   console.log('no')
+        // }
+      })
+    }
+
+    ee.on('disconnect', function () {
+      switchboards[i].cancelPending()
+    })
+
+    return ee
+  })
+
+  var cliffJumper = unreliables[0]
+  var msgs = ['hey'.repeat(5e5), 'ho', 'blah!'.repeat(1234), 'booyah'.repeat(4321), 'ooga']
+  // var msgs = ['hey', 'ho', 'blah!', 'booyah', 'ooga']
+  var togo = msgs.length * names.length * (names.length - 1) // send and receive
+  t.plan(togo)
+
+  var received = 0
+  var switchboards = names.map(function (name, i) {
+    var key = DSA.parsePrivate(keys[i])
+    var s = new Switchboard({
+      unreliable: unreliables[i],
+      clientForRecipient: function (recipient) {
+        return new OTRClient({
+          client: new Sendy(),
+          key: key,
+          theirFingerprint: key.fingerprint()
+        })
+      },
+      encode: function (msg, to) {
+        return {
+          data: msg,
+          from: name,
+          to: to
+        }
+      }
+    })
+
+    var toRecv = {}
+    var prev = {}
+    names.forEach(function (other, j) {
+      if (i === j) return
+
+      toRecv[other] = msgs.slice()
+      // setInterval(function () {
+      //   console.log(name, other, toRecv[other].length)
+      // }, 5000).unref()
+    })
+
+    // s.on('message', function (msg, from) {
+    //   msg = msg.toString()
+    //   if (prev[from] === msg) {
+    //     console.log('discarding duplicate')
+    //     return
+    //   }
+
+    //   received++
+
+    //   t.equal(msg, toRecv[from].shift())
+    //   console.log(name, 'received from', from, ',', toRecv[from].length, 'togo')
+    //   prev[from] = msg
+
+    //   // if (name === cliffJumper && !waitedForTimeout) waitForTimeout = true
+
+    //   finish()
+
+    //   // blocked[from] = true
+    // })
+
+    // s.on('timeout', function (recipient) {
+    //   t.comment('forced timeout')
+    //   // waitedForTimeout = true
+    //   // waitForTimeout = false
+
+    //   s.cancelPending(recipient)
+    // })
+
+    // s.setTimeout(500)
+
+    return s
+  })
+
+  switchboards.forEach(function (sender, i) {
+    names.forEach(function (receiver, j) {
+      if (i === j) return
+
+      var toSend = msgs.slice()
+      sendNext()
+
+      function sendNext () {
+        var msg = toSend.shift()
+        if (!msg) return
+
+        sender.send(receiver, msg, function (err) {
+          if (err) {
+            toSend.unshift(msg)
+            console.log(names[i], 'resending to', names[j], err, toSend.length)
+          } else {
+            // if (!disconnected && !reconnected && toSend.length === 2) {
+            //   process.nextTick(function () {
+            //     cliffJumper.emit('disconnect')
+            //     setTimeout(function () {
+            //       cliffJumper.emit('connect')
+            //     }, 2000)
+            //   })
+            // }
+
+            t.pass(`${names[i]} delivered msg to ${receiver}, ${toSend.length} to go `)
+            finish() // delivered
+          }
+
+          sendNext()
+        })
+      }
+    })
+  })
+
+  function finish () {
+    if (--togo === 0) cleanup()
+  }
+
+  function cleanup () {
+    console.log('TOTAL PACKETS', Connection.TOTAL_PACKETS)
+    switchboards.forEach(function (s) {
+      s.destroy()
+    })
+  }
+
+  // function newBadConnection (opts) {
+  //   var c = new Connection(opts)
+  //   var receive = c.receive
+  //   c.receive = function () {
+  //     // if (!waitForTimeout) {
+  //       return receive.apply(this, arguments)
+  //     // } else {
+  //     //   console.log('no')
+  //     // }
+  //   }
+  // }
 })
 
 function basicReceive (msg) {
