@@ -99,7 +99,7 @@ test('basic', function (t) {
   }
 })
 
-test.only('switchboard disconnect', function (t) {
+test('switchboard disconnect', function (t) {
   // t.timeoutAfter(5000)
   var names = ['a', 'b', 'c']
   var blocked = {}
