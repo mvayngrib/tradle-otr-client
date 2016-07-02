@@ -11,8 +11,8 @@
   "dependencies": {
     "@tradle/otr": "^0.2.17",
     "debug": "^2.2.0",
-    "sendy": "^2.0.1",
-    "sendy-ws": "^1.2.2",
+    "sendy": "^2.1.0",
+    "sendy-ws": "^1.2.5",
     "typeforce": "^1.6.2"
   },
   "devDependencies": {

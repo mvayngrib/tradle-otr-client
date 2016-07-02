@@ -260,7 +260,7 @@ test('switchboard disconnect', function (t) {
   }
 
   function cleanup () {
-    console.log('TOTAL PACKETS', Connection.TOTAL_PACKETS)
+    // console.log('TOTAL PACKETS', Connection.TOTAL_PACKETS)
     switchboards.forEach(function (s) {
       s.destroy()
     })
